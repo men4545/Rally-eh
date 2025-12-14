@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Mini Rallye Désert 3D Avancé</title>
+<style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+    /* Boutons tactiles */
+    .btn-container {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+    }
+    .btn-container button {
+        font-size: 24px;
+        padding: 15px 20px;
+        border-radius: 10px;
+        border: none;
+        background-color: rgba(0,0,0,0.5);
+        color: white;
+    }
+    /* Score et chrono */
+    #score, #chrono {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        font-size: 24px;
+        color: white;
+        background-color: rgba(0,0,0,0.5);
+        padding: 10px;
+        border-radius: 10px;
+        margin-bottom: 5px;
+    }
+    #chrono {
+        top: 60px;
+    }
+</style>
+</head>
+<body>
+<div id="score">Score: 0</div>
+<div id="chrono">Temps: 0s</div>
+
+<div class="btn-container">
+    <button id="leftBtn">⬅️</button>
+    <button id="upBtn">⬆️</button>
+    <button id="downBtn">⬇️</button>
+    <button id="rightBtn">➡️</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+    // --- Scène et caméra ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffcc66); // ciel désert chaud
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 5, 10);
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // --- Lumières ---
+    const light = new THREE.DirectionalLight(0xffffff,1);
+    light.position.set(10,20,10);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x888888));
+
+    // --- Sol désert ---
+    const groundGeometry = new THREE.PlaneGeometry(500,500,50,50);
+    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xdeb887 });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI/2;
+    scene.add(ground);
+
+    // --- Voiture ---
+    const carGeometry = new THREE.BoxGeometry(1,0.5,2);
+    const carMaterial = new THREE.MeshStandardMaterial({ color:0xff0000 });
+    const car = new THREE.Mesh(carGeometry, carMaterial);
+    car.position.y = 0.25;
+    scene.add(car);
+
+    // --- Obstacles ---
+    const obstacles = [];
+    for(let i=0;i<30;i++){
+        const rockGeom = new THREE.DodecahedronGeometry(Math.random()*0.8+0.5);
+        const rockMat = new THREE.MeshStandardMaterial({ color:0x8b4513 });
+        const rock = new THREE.Mesh(rockGeom,rockMat);
+        rock.position.set(Math.random()*100-50,0.5,-i*15-5);
+        scene.add(rock);
+        obstacles.push(rock);
+    }
+
+    // --- Boosts ---
+    const boosts = [];
+    for(let i=0;i<10;i++){
+        const boostGeom = new THREE.SphereGeometry(0.5,16,16);
+        const boostMat = new THREE.MeshStandardMaterial({ color:0x00ff00 });
+        const boost = new THREE.Mesh(boostGeom, boostMat);
+        boost.position.set(Math.random()*80-40,0.5,-i*40-10);
+        scene.add(boost);
+        boosts.push(boost);
+    }
+
+    // --- Contrôle clavier ---
+    const carSpeedBase = 0.3;
+    let carSpeed = carSpeedBase;
+    const carTurnSpeed = 0.05;
+    const keys = {};
+    window.addEventListener('keydown',e=>keys[e.key]=true);
+    window.addEventListener('keyup',e=>keys[e.key]=false);
+
+    // --- Tap/clic pour tourner ---
+    const tapTurnAngle = Math.PI/6;
+    window.addEventListener('click',()=>car.rotation.y+=tapTurnAngle);
+    window.addEventListener('touchstart',()=>car.rotation.y+=tapTurnAngle);
+
+    // --- Boutons tactiles ---
+    document.getElementById('leftBtn').addEventListener('touchstart',()=>car.rotation.y+=carTurnSpeed);
+    document.getElementById('rightBtn').addEventListener('touchstart',()=>car.rotation.y-=carTurnSpeed);
+    document.getElementById('upBtn').addEventListener('touchstart',()=>car.position.z-=carSpeed*Math.cos(car.rotation.y));
+    document.getElementById('downBtn').addEventListener('touchstart',()=>car.position.z+=carSpeed*Math.cos(car.rotation.y));
+
+    // --- Score et chrono ---
+    let score=0;
+    const scoreEl=document.getElementById('score');
+    let startTime=Date.now();
+    const chronoEl=document.getElementById('chrono');
+
+    // --- Animation ---
+    function animate(){
+        requestAnimationFrame(animate);
+
+        // Clavier
+        if(keys['ArrowUp']) car.position.z-=carSpeed*Math.cos(car.rotation.y);
+        if(keys['ArrowDown']) car.position.z+=carSpeed*Math.cos(car.rotation.y);
+        if(keys['ArrowLeft']) car.rotation.y+=carTurnSpeed;
+        if(keys['ArrowRight']) car.rotation.y-=carTurnSpeed;
+
+        // Collision obstacles
+        for(let obs of obstacles){
+            const dx=car.position.x-obs.position.x;
+            const dz=car.position.z-obs.position.z;
+            if(Math.sqrt(dx*dx+dz*dz)<1.5){
+                alert("Collision ! Game Over !");
+                car.position.set(0,0.25,0);
+                car.rotation.y=0;
+                score=0;
+                startTime=Date.now();
+            }
+        }
+
+        // Collision boosts
+        for(let i=boosts.length-1;i>=0;i--){
+            const boost=boosts[i];
+            const dx=car.position.x-boost.position.x;
+            const dz=car.position.z-boost.position.z;
+            if(Math.sqrt(dx*dx+dz*dz)<1){
+                carSpeed=carSpeedBase*2; // boost x2
+                scene.remove(boost);
+                boosts.splice(i,1);
+                setTimeout(()=>{ carSpeed=carSpeedBase; },3000);
+            }
+        }
+
+        // Score et chrono
+        score+=0.1;
+        scoreEl.textContent="Score: "+Math.floor(score);
+        chronoEl.textContent="Temps: "+Math.floor((Date.now()-startTime)/1000)+"s";
+
+        // Caméra
+        camera.position.x=car.position.x+6*Math.sin(car.rotation.y);
+        camera.position.z=car.position.z+6*Math.cos(car.rotation.y);
+        camera.position.y=car.position.y+3;
+        camera.lookAt(car.position);
+
+        renderer.render(scene,camera);
+    }
+    animate();
+
+    // --- Resize fenêtre ---
+    window.addEventListener('resize',()=>{
+        camera.aspect=window.innerWidth/window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth,window.innerHeight);
+    });
+</script>
+</body>
+</html>
